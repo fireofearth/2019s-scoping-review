@@ -1,0 +1,79 @@
+\documentclass[12pt]{extarticle}
+\usepackage[english]{babel}
+\usepackage{graphicx}
+\usepackage{framed}
+\usepackage[normalem]{ulem}
+\usepackage{amsmath}
+\usepackage{amsthm}
+\usepackage{amssymb}
+\usepackage{amsfonts}
+\usepackage{enumerate}
+\usepackage{bm}
+\usepackage[utf8]{inputenc}
+\usepackage[top=1 in,bottom=1in, left=1 in, right=1 in]{geometry}
+
+\usepackage{hyperref}
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue,
+    filecolor=magenta,      
+    urlcolor=cyan,
+}
+\urlstyle{same}
+
+\newcommand{\cvec}[1]{{\mathbf #1}}
+\newcommand{\rvec}[1]{\vec{\mathbf #1}}
+\newcommand{\ihat}{\hat{\textbf{\i}}}
+\newcommand{\jhat}{\hat{\textbf{\j}}}
+\newcommand{\khat}{\hat{\textbf{k}}}
+\newcommand{\minor}{{\rm minor}}
+\newcommand{\trace}{{\rm trace}}
+\newcommand{\spn}{{\rm Span}}
+\newcommand{\rem}{{\rm rem}}
+\newcommand{\ran}{{\rm range}}
+\newcommand{\range}{{\rm range}}
+\newcommand{\mdiv}{{\rm div}}
+\newcommand{\proj}{{\rm proj}}
+\newcommand{\<}{\langle}
+\renewcommand{\>}{\rangle}
+\renewcommand{\emptyset}{\varnothing}
+\newcommand{\attn}[1]{\textbf{#1}}
+\theoremstyle{definition}
+\newtheorem{theorem}{Theorem}
+\newtheorem{corollary}{Corollary}
+\newtheorem*{definition}{Definition}
+\newtheorem*{example}{Example}
+\newtheorem*{note}{Note}
+\newtheorem{exercise}{Exercise}
+\newcommand{\bproof}{\bigskip {\bf Proof. }}
+\newcommand{\eproof}{\hfill\qedsymbol}
+\newcommand{\Disp}{\displaystyle}
+\newcommand{\qe}{\hfill\(\bigtriangledown\)}
+\setlength{\columnseprule}{1 pt}
+
+\include{./notation}
+
+\title{Notes for 2019S}
+\author{Colin}
+\date{May 2019}
+
+\begin{document}
+
+\maketitle
+
+\section{Numerical Analysis}
+\subsection{Poisson solver}
+\href{http://users.cs.northwestern.edu/~jet/Teach/2004_3spr_IBMR/poisson.pdf}{Poisson Solvers}.
+We are trying to solve problems of the form $-a\nabla^2 +\bm{b}\cdot \nabla u + cu = f$. This can be solved using \href{https://github.com/ginkgo-project/ginkgo/wiki/Tutorial:-Building-a-2D-Poisson-Solver}{Gingko Solver}
+
+\subsection{Bulirsch Stoer}
+Obtains numerical solutions to ODEs.
+\href{https://people.sc.fsu.edu/~sshanbhag/BulirschStoer.pdf}{https://people.sc.fsu.edu/~sshanbhag/BulirschStoer.pdf}
+\href{http://web.mit.edu/ehliu/Public/Spring2006/18.304/implementation_bulirsch_stoer.pdf}{Article}
+\href{https://en.wikipedia.org/wiki/Bulirsch%E2%80%93Stoer_algorithm}{wikipedia article}
+
+\subsection{Adam Bashforth}
+Linear multistep method for ODEs
+\href{https://en.wikipedia.org/wiki/Linear_multistep_method#Adams%E2%80%93Bashforth_methods}{wikipedia article}
+
+\end{document}
