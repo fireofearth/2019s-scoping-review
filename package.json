@@ -1,0 +1,22 @@
+{
+  "name": "2019s-numerical-analysis",
+  "version": "1.0.0",
+  "description": "get details from repositories",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://fireofearth@bitbucket.org/EastOfHades/2019s-numerical-analysis.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "homepage": "https://bitbucket.org/EastOfHades/2019s-numerical-analysis#readme",
+  "dependencies": {
+    "axios": "^0.18.0",
+    "commander": "^2.20.0",
+    "express": "^4.16.4",
+    "moment": "^2.24.0"
+  }
+}
