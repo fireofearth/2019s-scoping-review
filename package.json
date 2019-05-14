@@ -15,7 +15,9 @@
   "homepage": "https://bitbucket.org/EastOfHades/2019s-numerical-analysis#readme",
   "dependencies": {
     "axios": "^0.18.0",
+    "cheerio": "^1.0.0-rc.3",
     "commander": "^2.20.0",
+    "csv": "^5.1.1",
     "express": "^4.16.4",
     "moment": "^2.24.0"
   }

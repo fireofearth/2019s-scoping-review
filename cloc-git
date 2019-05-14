@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+
+git clone --depth 1 "$1" temp-linecount-repo &&
+  cloc --json temp-linecount-repo &&
+  rm -rf temp-linecount-repo
