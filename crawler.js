@@ -1,16 +1,20 @@
 const url     = require("url");
 const path    = require("path");
-const program = require("commander");
-const express = require("express");
 const axios   = require("axios");
 const moment  = require("moment");
 const cheerio = require("cheerio");
 const util    = require("util");
+const yaml    = require("js-yaml");
+const readFileSync = require("fs").readFileSync;
 const execFile = util.promisify(require("child_process").execFile);
 const csvStringify = util.promisify(require("csv-stringify"));
 const csvParse = util.promisify(require("csv-parse"));
 const appendFile = util.promisify(require("fs").appendFile);
 const readFile = util.promisify(require("fs").readFile);
+
+/**
+ * Helper functions
+ */
 
 const isArray = function(a) {
     return (!!a) && (a.constructor === Array);
@@ -51,10 +55,34 @@ const byteFormat = function(val) {
     else { return (MBsize >= 1.0) ? `${MBsize} MB` : `${KBsize} KB`; }
 };
 
-const csvFile   = "out.csv";
-const csvInput  = "in.csv";
-const sitePage  = "https://github.com";
-const apiPage   = "https://api.github.com";
+/**
+ * Constants
+ */
+
+const csvFile    = "out.csv";
+const csvInput   = "in.csv";
+const configFile = "config.yaml";
+const sitePage   = "https://github.com";
+const apiPage    = "https://api.github.com";
+
+/**
+ * You need Basic Authentication to use Github's API without timeouts. In order to do so, generate
+ * OAth tokens here ( https://github.com/settings/tokens ) and create a YAML file with these contents:
+ *
+ * username: <username>
+ * password: <token>
+ *
+ * More details ( https://developer.github.com/v3/auth/#basic-authentication )
+ *
+ * To view your API access rate limits call
+ * curl -u <username> -i https://api.github.com/users/<username>
+ */
+let bulk = yaml.safeLoad(readFileSync(path.resolve(__dirname,configFile), 'utf8'));
+const config = { auth: bulk };
+
+/**
+ * Main protocols
+ */
 
 const makeEntry = function(ownerID, repoID) {
 
@@ -73,6 +101,10 @@ const makeEntry = function(ownerID, repoID) {
         path.join("repos",ownerID,repoID,"stats","contributors")
     );
 
+    const queryRepoContributorsV2 = url.resolve(apiPage,
+        path.join("repos",ownerID,repoID,"contributors")
+    );
+
 // query string for commits
 // example:
 // https://api.github.com/repos/coin-or/pulp/commits
@@ -89,8 +121,11 @@ const makeEntry = function(ownerID, repoID) {
         path.join(ownerID,`${repoID}.git`)
     );
 
+    /**
+     * API often fails on retrieval
+     */
     const getContributors = function(arr) {
-        return axios.get(queryRepoContributors)
+        return axios.get(queryRepoContributors, config)
             .then(response => {
                 const contributors = response.data;
                 if(isArray(contributors)) {
@@ -107,14 +142,55 @@ const makeEntry = function(ownerID, repoID) {
                     throwErr("can't get contributors");
                 }
             });
-    }
+    };
+
+    const getContributorsV2 = function(arr) {
+        return axios.get(queryRepoContributorsV2, config)
+            .then(response => {
+                const contributors = response.data;
+                if(isArray(contributors)) {
+                    const numberOfContributors = contributors.length >= 30 ? ">=30" : contributors.length;
+                    let contribCount = "";
+                    contributors.forEach(contributor => {
+                        contribCount += `${contributor.login}: ${contributor.contributions}; `
+                    });
+                    return arr.concat([
+                        numberOfContributors,
+                        contribCount
+                    ]);
+                } else {
+                    throwErr("can't get contributors");
+                }
+            });
+    };
+
+    /**
+     * Fail due to dynamic loading of number
+     */
+    const getContributorNumber = function(arr) {
+        return axios.get(queryPage, config)
+            .then(resp => {
+                if(typeof resp.data == "string") {
+                    const $ = cheerio.load(resp.data);
+                    let contributorBox = $("html").find(".numbers-summary").first();
+                    contributorBox = contributorBox.children().eq(3);
+                    print(contributorBox.html());
+                    let contributors = contributorBox.children("a").first().children("span").first().text();
+                    contributors = contributors.replace(/,/g,"");
+                    contributors = parseInt(contributors, 10);
+                    return arr.concat([contributors])
+                } else {
+                    throwErr("can't get html file");
+                }
+            });
+    };
 
     const getCommitDetails = function(arr) {
-        return axios.get(queryRepo)
+        return axios.get(queryRepo, config)
             .then(resp => {
                 let creationDate = resp.data.created_at;
                 creationDate = convDate(creationDate);
-                return Promise.all([creationDate, axios.get(queryRepoCommits)]);
+                return Promise.all([creationDate, axios.get(queryRepoCommits, config)]);
             })
             .then(([creationDate, resp]) => {
                 const commits = resp.data;
@@ -129,7 +205,7 @@ const makeEntry = function(ownerID, repoID) {
     }
 
     const getCommitNumber = function(arr) {
-        return axios.get(queryPage)
+        return axios.get(queryPage, config)
             .then(resp => {
                 if(typeof resp.data == "string") {
                     const $ = cheerio.load(resp.data);
@@ -142,10 +218,10 @@ const makeEntry = function(ownerID, repoID) {
                     throwErr("can't get html file");
                 }
             });
-    }
+    };
 
     const getLanguageSizeInBytes = function(arr) {
-        return axios.get(queryRepoLanguages)
+        return axios.get(queryRepoLanguages, config)
             .then(resp => {
                 const sizes = resp.data;
                 let totalBytes = 0;
@@ -187,7 +263,7 @@ const makeEntry = function(ownerID, repoID) {
     };
 
     print(`gathering from ${ownerID}/${repoID}`);
-    return Promise.resolve([ ])
+    return Promise.resolve([ownerID,repoID])
         .then((arr) => {
             print("getting size by language");
             return getLanguageSizeInBytes(arr);
@@ -206,7 +282,7 @@ const makeEntry = function(ownerID, repoID) {
         })
         .then((arr) => {
             print("getting contributor details");
-            return getContributors(arr);
+            return getContributorsV2(arr);
         })
         .then((arr) => {
             print(arr);
@@ -240,7 +316,7 @@ const promiseLoop = function(rows, index) {
 Promise.resolve()
     .then(() => {
         print("writing header");
-        const arr = ["repo size","size language","# files", "# LoC", "# files by lang.", "# LoC by lang.", "# commits", "first commit", "last commit", "# contributors", "# commits by contrib."];
+        const arr = ["owner ID","repo ID","repo size","size language","# files", "# LoC", "# files by lang.", "# LoC by lang.", "# commits", "first commit", "last commit", "# contributors"];
         return csvStringify([arr]);
     })
     .then((str) => {
@@ -257,7 +333,7 @@ Promise.resolve()
         print("gathering information...");
         return promiseLoop(rows, 0);
     })
-    .then((rows) => {
+    .then(() => {
         print("DONE");
     })
     .catch(error => {
