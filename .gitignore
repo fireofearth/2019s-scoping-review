@@ -4,6 +4,7 @@
 *.csv
 .idea/
 *.yaml
+*_backups*
 config
 node_modules/
 package-lock.json
