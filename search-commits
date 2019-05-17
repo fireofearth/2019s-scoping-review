@@ -1,0 +1,189 @@
+#!/bin/node
+
+const url     = require("url");
+const path    = require("path");
+const axios   = require("axios");
+const moment  = require("moment");
+const util    = require("util");
+const yaml    = require("js-yaml");
+const {graphql, buildSchema} = require("graphql");
+const readFileSync = require("fs").readFileSync;
+const execFile = util.promisify(require("child_process").execFile);
+const csvStringify = util.promisify(require("csv-stringify"));
+const csvParse = util.promisify(require("csv-parse"));
+const appendFile = util.promisify(require("fs").appendFile);
+const readFile = util.promisify(require("fs").readFile);
+
+/**
+ * Helper functions
+ */
+
+const isArray = function(a) {
+    return (!!a) && (a.constructor === Array);
+};
+
+const isObject = function(a) {
+    return (!!a) && (a.constructor === Object);
+};
+
+const print = function(stmt) {
+    if(isObject(stmt) || isArray(stmt)) {
+        console.log(JSON.stringify(stmt, null, 3));
+    } else {
+        console.log(stmt);
+    }
+};
+
+const throwErr = function(stmt) {
+    if(isObject(stmt) || isArray(stmt)) {
+        throw `ERROR: ${JSON.stringify(stmt, null, 3)}`;
+    } else {
+        throw `ERROR: ${stmt}`;
+    }
+};
+
+const convDate = function(str) {
+    return moment(str).format("D MMM, YYYY");
+};
+
+const byteFormat = function(val) {
+    const GBfactor = 0.000000001;
+    const MBfactor = 0.000001;
+    const KBfactor = 0.001;
+    const GBsize = (val * GBfactor).toFixed(2);
+    const MBsize = (val * MBfactor).toFixed(2);
+    const KBsize = (val * KBfactor).toFixed(2);
+    if(GBsize >= 1.0) { return `${GBsize} GB`; }
+    else { return (MBsize >= 1.0) ? `${MBsize} MB` : `${KBsize} KB`; }
+};
+
+/**
+ * You need Basic Authentication to use Github's API without timeouts. 
+ * In order to do so, generate OAth tokens here 
+ * ( https://github.com/settings/tokens ) and create a YAML file with 
+ * these contents:
+ *
+ * username: <username>
+ * password: <token>
+ *
+ * More details ( https://developer.github.com/v3/auth/#basic-authentication )
+ *
+ * To view your API access rate limits call
+ * curl -u <username> -i https://api.github.com/users/<username>
+ */
+const configFile = "config.yaml";
+let bulk = yaml.safeLoad(readFileSync(path.resolve(__dirname,configFile), 'utf8'));
+const config = { auth: bulk };
+
+/**
+ * Constants
+ */
+
+const csvFile    = "out.csv";
+const csvInput   = "in.csv";
+const sitePage   = "https://github.com";
+const apiPage    = "https://api.github.com";
+const graphqlPage  = "https://api.github.com/graphql";
+
+if(process.argv.length != 6) {
+    print("retrieves the commits by given year and date");
+    print("usage:\nsearch-commits [owner slug] [repo slug] [year] [date]\n");
+    process.exit();
+}
+
+const ownerSlug = process.argv[2];
+const repoSlug  = process.argv[3];
+const year  = parseInt(process.argv[4],10);
+const month = parseInt(process.argv[5],10);
+const dateBegin = moment(`${year} ${month} 1`, "YYYY MM D").toISOString();
+const daysInMonth = moment(`${year} ${month}`, "YYYY MM").daysInMonth();
+const dateEnd = moment(`${year} ${month} ${daysInMonth}`, "YYYY MM D").toISOString();
+
+/**
+ * Main protocols
+ */
+
+const warhead = `
+query {
+    repository(owner:"${ownerSlug}", name:"${repoSlug}") {
+        defaultBranchRef{
+            target{
+                ... on Commit{
+                    history(first:100, since:"${dateBegin}", until:"${dateEnd}"){
+                        totalCount
+                        edges{
+                            node{
+                                message
+                                committedDate
+                                commitUrl
+                            }
+                        }
+                        pageInfo{
+                            endCursor
+                            hasNextPage
+                        }
+                    }
+                }
+            }
+        }
+    }
+}`;
+
+const printEdges = function(edges) {
+    edges.forEach(node => {
+        print(`\nmessage: ${node.node.message}`);
+        print(`committed date: ${node.node.committedDate}`);
+        print(`commit URL: ${node.node.commitUrl}`);
+    });
+};
+
+const keepGoing = function(cursor) {
+    const nextWarhead = `
+    query {
+        repository(owner:"${ownerSlug}", name:"${repoSlug}") {
+            defaultBranchRef{
+                target{
+                    ... on Commit{
+                        history(first: 100, after:"${cursor}", since:"${dateBegin}", until:"${dateEnd}"){
+                            totalCount
+                            edges{
+                                node{
+                                    message
+                                    committedDate
+                                    commitUrl
+                                }
+                            }
+                            pageInfo{
+                                endCursor
+                                hasNextPage
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }`;
+
+    return axios.post(graphqlPage, { query: nextWarhead }, config)
+        .then((resp) => {
+            const content = resp.data.data.repository.defaultBranchRef.target.history;
+            printEdges(content.edges);
+            if(content.pageInfo.hasNextPage)
+                return keepGoing(content.pageInfo.endCursor); 
+        })
+};
+
+return axios.post(graphqlPage, { query: warhead }, config)
+    .then((resp) => {
+        const content = resp.data.data.repository.defaultBranchRef.target.history;
+        const totalCount = content.totalCount;
+        print(totalCount);
+        printEdges(content.edges);
+        if(content.pageInfo.hasNextPage) {
+            return keepGoing(content.pageInfo.endCursor); 
+        }
+    })
+    .catch((err) => {
+        print(err);
+    });
+

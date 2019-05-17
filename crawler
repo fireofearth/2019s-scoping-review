@@ -1,3 +1,5 @@
+#!/bin/node
+
 const url     = require("url");
 const path    = require("path");
 const axios   = require("axios");
@@ -56,16 +58,6 @@ const byteFormat = function(val) {
 };
 
 /**
- * Constants
- */
-
-const csvFile    = "out.csv";
-const csvInput   = "in.csv";
-const configFile = "config.yaml";
-const sitePage   = "https://github.com";
-const apiPage    = "https://api.github.com";
-
-/**
  * You need Basic Authentication to use Github's API without timeouts. In order to do so, generate
  * OAth tokens here ( https://github.com/settings/tokens ) and create a YAML file with these contents:
  *
@@ -77,8 +69,25 @@ const apiPage    = "https://api.github.com";
  * To view your API access rate limits call
  * curl -u <username> -i https://api.github.com/users/<username>
  */
+const configFile = "config.yaml";
 let bulk = yaml.safeLoad(readFileSync(path.resolve(__dirname,configFile), 'utf8'));
 const config = { auth: bulk };
+
+/**
+ * Constants
+ */
+const csvFile    = "out.csv";
+const csvInput   = "in.csv";
+const sitePage   = "https://github.com";
+const apiPage    = "https://api.github.com";
+
+if(!require("fs").existsSync(path.resolve(__dirname,csvInput))) {
+    print("usage: crawler");
+    print("you need to create a in.csv file with rows of this format:");
+    print("[owner slug] | [repo slug]");
+    print("crawer will then attempt to crawl the API URL:  https://api.github.com/repo/[owner slug]/[repo slug]");
+    process.exit();
+}
 
 /**
  * Main protocols
