@@ -39,10 +39,15 @@ Sort the contributors of Mercurial repo by number of commits
 
 ## Search Learnings
 
-
 #### PETSc
 
-SNES (`SNESLineSearch`) is a Abstract PETSc object that manages nonlinear problems (non-linear solvers). It has type `SNESLineSearchType` tests it the line search method to use:
+Build scripts and configuration `lib/petsc`
+
+`SNESLineSearch` (`src/snes/linesearch`)
+
+Source implementation at `src/snes/linesearch`, headers at `include/petscsnes.h` 
+
+`SNESLineSearch` is a Abstract PETSc object that manages nonlinear problems (non-linear solvers). It has type `SNESLineSearchType` tests it the line search method to use:
 
 `SNESLINESEARCHBT` is backtracking line search, implemented in `SNESLineSearchApply_BT` in `src/snes/linesearch/impls/bt/linesearchbt.c`. Here it uses `.5*g <= .5*f + lambda*alpha*initslope` to check sufficient tolerence.
 
@@ -54,21 +59,32 @@ SNESLINESEARCHL2
 
 SNESLINESEARCHSHELL
 
+`FUN3D` (`src/contrib/fun3d`) 
+
+3-D, Unstructured Compressible Euler Solver originally written by W. K. Anderson of NASA Langley, and ported into PETSc framework by D. K. Kaushik, ODU and ICASE.
+Finite volume flux split solver for general polygons `src/contrib/fun3d/comp/flow.c`. Note sure how this solver is called.
+<http://127.0.0.1:7080/www.github.com/petsc/petsc/-/blob/src/contrib/fun3d/comp/flow.c?utm_source=share#L109>
+
 `src/mat/examples/tests/` contains tests for Matrix functions
 
 #### Octave
 
-Optimization scripts here. Has documentation; owned by GNU Octave.  
+AOptimization scripts here. Has documentation; owned by GNU Octave.  
+
 `scripts/optimization/fsolve.m`: function has signature `function [x, fval, info, output, fjac] = fsolve (fcn, x0, options = struct ())`
 
+`scripts/optimization/fminsearch.m` `function [x, fval, exitflag, output] = fminsearch (varargin)`
 
-## Defects4J
+
+## Defects4J / Commons Math
 
 [Defects4J Documentation](https://people.cs.umass.edu/~rjust/defects4j/html_doc/index.html)
 
 `defects4j info -p Math` to get information about Commons Math  
 `defects4j info -p Math -b 1` to get the first bug  
 project_id: Chart, Closure, Lang, Math, Mockito, Time  
+
+
 
 ## Numerical Analysis
 
