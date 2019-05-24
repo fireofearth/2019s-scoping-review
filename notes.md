@@ -1,6 +1,10 @@
 
 # Notes for 2019 Numerical Analysis
 
+Mahsa Khalili, PhD student: optimization of exoskeletons. Currently no stabilization. Create auto-actuators to minimize head-injury. Wheeled mobility assistance device (WMAD).
+
+Wheelchair outcome measures (PhD) research may take ~20 years for ~3 measurements.
+
 ## Research Setup
 
 #### Docker
