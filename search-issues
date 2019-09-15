@@ -1,0 +1,360 @@
+#!/bin/node
+
+const url     = require("url");
+const path    = require("path");
+const axios   = require("axios");
+const moment  = require("moment");
+const util    = require("util");
+const yaml    = require("js-yaml");
+const mysql = require("mysql");
+const {graphql, buildSchema} = require("graphql");
+const readFileSync = require("fs").readFileSync;
+const execFile = util.promisify(require("child_process").execFile);
+const csvStringify = util.promisify(require("csv-stringify"));
+const csvParse = util.promisify(require("csv-parse"));
+const appendFile = util.promisify(require("fs").appendFile);
+const readFile = util.promisify(require("fs").readFile);
+
+/**
+ * Sitewide Constants
+ */
+const sitePage   = "https://github.com";
+const apiPage    = "https://api.github.com";
+const dbname = "github";
+const graphqlPage  = "https://api.github.com/graphql";
+
+/**
+ * Helper functions
+ */
+
+const isArray = (a) => (!!a) && (a.constructor === Array);
+
+const isObject = (a) => (!!a) && (a.constructor === Object);
+
+const print = (stmt) => {
+    if(isObject(stmt) || isArray(stmt)) {
+        console.log(JSON.stringify(stmt, null, 3));
+    } else {
+        console.log(stmt);
+    }
+};
+
+const throwErr = (stmt) => {
+    if(isObject(stmt) || isArray(stmt)) {
+        throw `ERROR: ${JSON.stringify(stmt, null, 3)}`;
+    } else {
+        throw `ERROR: ${stmt}`;
+    }
+};
+
+/**
+ * SQL Commands
+ */
+
+const qListEntriesOf = (table) => `
+SELECT * FROM ${table}`;
+
+const qListTables = `
+SHOW TABLES`;
+
+const qDropTableOf = (table) => `
+DROP TABLE ${table}`;
+
+const qCreateRepositoriesTable = `
+CREATE TABLE IF NOT EXISTS repositories (
+repo_id int not null primary key auto_increment,
+node_id varchar(255) not null,
+owner_slug varchar(255) not null,
+repo_slug varchar(255) not null
+)`;
+
+const qAddRepositoriesWith = (repoNodeID, ownerSlug, repoSlug) => `
+INSERT INTO repositories (node_id, owner_slug, repo_slug)
+VALUES ('${repoNodeID}', '${ownerSlug}', '${repoSlug}')
+`;
+
+const qCreateIssuesTable = `
+CREATE TABLE IF NOT EXISTS issues (
+iss_id int not null primary key auto_increment,
+repo_id int not null,
+node_id varchar(255) not null,
+title varchar(255) not null,
+body_text text(65535) not null,
+FOREIGN KEY (repo_id) REFERENCES repositories(repo_id)
+ON UPDATE CASCADE
+ON DELETE CASCADE
+)`;
+
+const qAddIssuesWith = (repoNodeID, issueNodeID, title, bodyText) => `
+INSERT INTO issues (repo_id, node_id, title, body_text) 
+VALUES (
+(SELECT repo_id FROM repositories WHERE node_id='${repoNodeID}'),
+'${issueNodeID}',
+'${title}',
+"${bodyText}"
+)`;
+
+const qCreateIssueCommentsTable = `
+CREATE TABLE IF NOT EXISTS issue_comments (
+comm_id int not null primary key auto_increment,
+iss_id int not null,
+body_text text(65535) not null,
+FOREIGN KEY (iss_id) REFERENCES issues(iss_id)
+ON UPDATE CASCADE
+ON DELETE CASCADE
+)`;
+
+const qCreateIssuesLabelsTable = `
+CREATE TABLE IF NOT EXISTS issue_labels (
+lab_id int not null primary key auto_increment,
+iss_id int not null,
+label varchar(255) not null,
+FOREIGN KEY (iss_id) REFERENCES issues(iss_id)
+ON UPDATE CASCADE
+ON DELETE CASCADE
+)`;
+
+const qAddIssueLabelsWith = (issueNodeID, label) => `
+INSERT INTO issue_labels (iss_id, label) VALUES (
+(SELECT iss_id FROM issues WHERE node_id='${issueNodeID}'),
+'${label}'
+)`;
+
+const qAddIssueCommentsWith = (issueNodeID, bodyText) => `
+INSERT INTO issue_comments (iss_id, body_text) VALUES (
+(SELECT iss_id FROM issues WHERE node_id='${issueNodeID}'),
+'${bodyText}'
+)`;
+
+/**
+ * Promisify all redis prototype functions including Redis commands
+ */
+const promisifyConnection = (conn) => {
+  const pub = { };
+
+  Object.keys(Object.getPrototypeOf(conn)).forEach((command) => {
+    pub[command] = util.promisify(conn[command]).bind(conn);
+  });
+
+  return pub;
+};
+
+const convDate = function(str) {
+    return moment(str).format("D MMM, YYYY");
+};
+
+/**
+ * You need Basic Authentication to use Github's API without timeouts. 
+ * In order to do so, generate OAth tokens here 
+ * ( https://github.com/settings/tokens ) and create a YAML file with 
+ * these contents:
+ *
+ * username: <username>
+ * password: <token>
+ *
+ * More details ( https://developer.github.com/v3/auth/#basic-authentication )
+ *
+ * To view your API access rate limits call
+ * curl -u <username> -i https://api.github.com/users/<username>
+ */
+
+const configFile = "config.yaml";
+let bulk = yaml.safeLoad(readFileSync(path.resolve(__dirname,configFile), 'utf8'));
+const config = { auth: bulk };
+
+const conn = promisifyConnection(mysql.createConnection({
+    host: 'localhost',
+    user: 'root',
+    password: '',
+    database: dbname
+}));
+
+//if(process.argv.length != 6) {
+//    print("retrieves the commits by given year and date");
+//    print("usage:\nsearch-commits [owner slug] [repo slug] [year] [date]\n");
+//    process.exit();
+//}
+//const ownerSlug = process.argv[2];
+//const repoSlug  = process.argv[3];
+//const year  = parseInt(process.argv[4],10);
+//const month = parseInt(process.argv[5],10);
+
+const ownerSlug = "scipy";
+const repoSlug  = "scipy";
+
+/**
+ * Main protocols
+ */
+
+const warhead = `
+query{
+  repository(owner: "${ownerSlug}", name: "${repoSlug}") {
+    id
+    nameWithOwner
+    issues(first: 5, states: CLOSED${repoSlug === "scipy" ? ", labels: [\"defect\"]" : ""}) {
+      totalCount
+      edges {
+        node {
+          id
+          title
+          bodyText
+          labels(first: 5) {
+            nodes {
+              name
+            }
+          }
+          comments(first: 5) {
+            nodes {
+              bodyText
+            }
+          }
+        }
+      }
+      pageInfo {
+        hasNextPage
+        endCursor
+      }
+    }
+  }
+}`;
+
+const printEdges = function(edges) {
+    edges.forEach(node => {
+        print(`\nmessage: ${node.node}`);
+    });
+};
+
+const keepGoing = function(cursor) {
+    const nextWarhead = `
+    query{
+      repository(owner: "${ownerSlug}", name: "${repoSlug}") {
+        id
+        issues(first: 100, after: "${cursor}", states: CLOSED${repoSlug === "scipy" ? ", labels: [\"defect\"]" : ""}) {
+          totalCount
+          edges {
+            node {
+              id
+              title
+              bodyText
+              labels(first: 5) {
+                nodes {
+                  name
+                }
+              }
+              comments(first: 5) {
+                nodes {
+                  bodyText
+                }
+              }
+            }
+          }
+          pageInfo {
+            hasNextPage
+            endCursor
+          }
+        }
+      }
+    }`;
+
+    return axios.post(graphqlPage, { query: nextWarhead }, config)
+        .then((resp) => {
+            const content = resp.data.data.repository.defaultBranchRef.target.history;
+            printEdges(content.edges);
+            if(content.pageInfo.hasNextPage)
+                return keepGoing(content.pageInfo.endCursor); 
+        })
+};
+
+const addIssue = (repoNodeID, node) => {
+    const issue = node.node;
+    const issueNodeID = issue.id;
+    const title = issue.title;
+    const bodyText = issue.bodyText;
+    const labels = issue.labels.nodes; // nodes.name
+    const comments = issue.comments.nodes; // nodes.bodyText
+    return conn.query(qAddIssuesWith(repoNodeID, issueNodeID, title, mysql.escape(bodyText)))
+        .then(() => {
+            const promises = labels.map(label => conn.query(qAddIssueLabelsWith(issueNodeID, label.name)));
+            return Promise.all(promises);
+        })
+        .then(() => {
+            const promises = comments.map(comment => conn.query(qAddIssueCommentsWith(issueNodeID, mysql.escape(comment.bodyText))));
+            return Promise.all(promises);
+        })
+        .catch(err => {
+            print(`ERR: adding issue ${issueNodeID}\nMSG: ` + err);
+        });
+};
+
+const initGraphqlCall = () => {
+    return axios.post(graphqlPage, { query: warhead }, config)
+        .then((resp) => {
+            print(resp.data);
+            const repository = resp.data.data.repository;
+            const repoNodeID = repository.id;
+            const issues = repository.issues.edges;
+            const totalCount = repository.issues.totalCount;
+            const hasNextPage  = repository.issues.pageInfo.hasNextPage;
+            const endCursor    = repository.issues.pageInfo.endCursor;
+            print(`totalCount  = ${totalCount}`);
+            print(`hasNextPage = ${hasNextPage}`);
+            print(`endCursor   = ${endCursor}`);
+
+            return conn.query(qAddRepositoriesWith(repoNodeID, ownerSlug, repoSlug))
+                .then(() => {
+                    const promises = issues.map(addIssue.bind(null,repoNodeID));
+                    return Promise.all(promises);
+                });
+        })
+        .then(() => {
+            print("DONE"); // stub
+            // if(content.pageInfo.hasNextPage) {
+            //     return keepGoing(content.pageInfo.endCursor);
+            // }
+        });
+};
+
+/**
+ *
+ *
+ *
+ */
+conn.connect(err => {
+
+    if(err) throw err;
+    print("Connected");
+
+    return conn.query(qListTables)
+
+        /* remake all tables */
+        .then((results, fields) => {
+            return Promise.all(
+                results.map((t) => conn.query(qDropTableOf(t.Tables_in_github)))
+            );
+        })
+        .then(() => {
+            return Promise.all([
+                conn.query(qCreateRepositoriesTable),
+                conn.query(qCreateIssuesTable),
+                conn.query(qCreateIssuesLabelsTable),
+                conn.query(qCreateIssueCommentsTable)
+            ]);
+        })
+
+        /* fetch the first set of issues */
+        .then(() => {
+            return initGraphqlCall();
+        })
+
+        .then((results, fields) => {
+            print(results);
+            return conn.end();
+        })
+
+        .catch(err => {
+            print(err);
+            return conn.end()
+        });
+
+});
+

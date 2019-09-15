@@ -1,0 +1,258 @@
+#!/bin/node
+
+const url     = require("url");
+const path    = require("path");
+const axios   = require("axios");
+const moment  = require("moment");
+const cheerio = require("cheerio");
+const util    = require("util");
+const yaml    = require("js-yaml");
+const mysql = require("mysql");
+const readFileSync = require("fs").readFileSync;
+const execFile = util.promisify(require("child_process").execFile);
+const csvStringify = util.promisify(require("csv-stringify"));
+const csvParse = util.promisify(require("csv-parse"));
+const appendFile = util.promisify(require("fs").appendFile);
+const readFile = util.promisify(require("fs").readFile);
+
+/**
+ * Sitewide Constants
+ */
+const sitePage   = "https://github.com";
+const apiPage    = "https://api.github.com";
+const dbname = "github";
+
+/**
+ * Helper functions
+ */
+
+const isArray = (a) => (!!a) && (a.constructor === Array);
+
+const isObject = (a) => (!!a) && (a.constructor === Object);
+
+const print = (stmt) => {
+    if(isObject(stmt) || isArray(stmt)) {
+        console.log(JSON.stringify(stmt, null, 3));
+    } else {
+        console.log(stmt);
+    }
+};
+
+const throwErr = (stmt) => {
+    if(isObject(stmt) || isArray(stmt)) {
+        throw `ERROR: ${JSON.stringify(stmt, null, 3)}`;
+    } else {
+        throw `ERROR: ${stmt}`;
+    }
+};
+
+/**
+ * Promisify all redis prototype functions including Redis commands
+ */
+const promisifyConnection = (conn) => {
+  const pub = { };
+
+  Object.keys(Object.getPrototypeOf(conn)).forEach((command) => {
+    pub[command] = util.promisify(conn[command]).bind(conn);
+  });
+
+  return pub;
+};
+
+const convDate = function(str) {
+    return moment(str).format("D MMM, YYYY");
+};
+
+/**
+ * You need Basic Authentication to use Github's API without timeouts. In order to do so, generate
+ * OAth tokens here ( https://github.com/settings/tokens ) and create a YAML file with these contents:
+ *
+ * username: <username>
+ * password: <token>
+ *
+ * More details ( https://developer.github.com/v3/auth/#basic-authentication )
+ *
+ * To view your API access rate limits call
+ * curl -u <username> -i https://api.github.com/users/<username>
+ */
+
+const configFile = "config.yaml";
+let bulk = yaml.safeLoad(readFileSync(path.resolve(__dirname,configFile), 'utf8'));
+const config = { auth: bulk };
+
+const conn = promisifyConnection(mysql.createConnection({
+    host: 'localhost',
+    user: 'root',
+    password: '',
+    database: dbname
+}));
+
+const qListEntriesOf = (table) => `
+SELECT * FROM ${table}`;
+
+const qListTables = `
+SHOW TABLES`;
+
+const qDropTableOf = (table) => `
+DROP TABLE ${table}`;
+
+const qCreateRepositoriesTable = `
+CREATE TABLE IF NOT EXISTS repositories (
+repo_id int not null primary key auto_increment,
+node_id varchar(255) not null,
+owner_slug varchar(255) not null,
+repo_slug varchar(255) not null
+)`;
+
+const qAddRepositoriesWith = (repoNodeID, ownerSlug, repoSlug) => `
+INSERT INTO repositories (node_id, owner_slug, repo_slug)
+VALUES ('${repoNodeID}', '${ownerSlug}', '${repoSlug}')
+`;
+
+const qCreateIssuesTable = `
+CREATE TABLE IF NOT EXISTS issues (
+iss_id int not null primary key auto_increment,
+repo_id int not null,
+node_id varchar(255) not null,
+title varchar(255) not null,
+body_text text(65535) not null,
+FOREIGN KEY (repo_id) REFERENCES repositories(repo_id)
+ON UPDATE CASCADE
+ON DELETE CASCADE
+)`;
+
+const qAddIssuesWith = (repoNodeID, issueNodeID, title, bodyText) => `
+INSERT INTO issues (repo_id, node_id, title, body_text) 
+VALUES (
+(SELECT repo_id FROM repositories WHERE node_id='${repoNodeID}'),
+'${issueNodeID}',
+'${title}',
+"${bodyText}"
+)`;
+
+const qCreateIssueCommentsTable = `
+CREATE TABLE IF NOT EXISTS issue_comments (
+comm_id int not null primary key auto_increment,
+iss_id int not null,
+body_text text(65535) not null,
+FOREIGN KEY (iss_id) REFERENCES issues(iss_id)
+ON UPDATE CASCADE
+ON DELETE CASCADE
+)`;
+
+const qCreateIssuesLabelsTable = `
+CREATE TABLE IF NOT EXISTS issue_labels (
+lab_id int not null primary key auto_increment,
+iss_id int not null,
+label varchar(255) not null,
+FOREIGN KEY (iss_id) REFERENCES issues(iss_id)
+ON UPDATE CASCADE
+ON DELETE CASCADE
+)`;
+
+const qAddIssueLabelsWith = (issueNodeID, label) => `
+INSERT INTO issue_labels (iss_id, label) VALUES (
+(SELECT iss_id FROM issues WHERE node_id='${issueNodeID}'),
+'${label}'
+)`;
+
+const qAddIssueCommentsWith = (issueNodeID, bodyText) => `
+INSERT INTO issue_comments (iss_id, body_text) VALUES (
+(SELECT iss_id FROM issues WHERE node_id='${issueNodeID}'),
+'${bodyText}'
+)`;
+
+const q4 = `
+DELETE FROM testing WHERE id = 1
+`;
+
+/**
+ * TASKS
+ * (1) drop all tables
+ * (2) create repositories table
+ * (3) add repositories to table
+ * (4) create issues table with foreign keys
+ *
+ */
+
+conn.connect(err => {
+
+    if(err) throw err;
+    print("Connected");
+
+    return conn.query(qListTables)
+        /* delete all tables */
+        .then((results, fields) => {
+            return Promise.all(
+                results.map((t) => conn.query(qDropTableOf(t.Tables_in_github)))
+            );
+        })
+
+        .then(() => {
+            return conn.query(qCreateRepositoriesTable);
+        })
+
+        .then(() => {
+            return Promise.all([
+                conn.query(qAddRepositoriesWith("01ba4719c","scipy","scipy")),
+                conn.query(qAddRepositoriesWith("80b6fe911","apache","commons-math"))
+            ]);
+        })
+
+        .then((results, fields) => {
+            return conn.query(qCreateIssuesTable);
+        })
+
+        .then(() => {
+            return Promise.all([
+                conn.query(
+                    qAddIssuesWith("01ba4719c","298497ad8","broken integrator","cogito ergo sum")
+                ),
+                conn.query(
+                    qAddIssuesWith("01ba4719c","18c3d9274","not converging","cogito ergo sum")
+                ),
+                conn.query(
+                    qAddIssuesWith("80b6fe911","98537ed5a","something wrong","cogito ergo sum")
+                )
+            ]);
+        })
+
+        .then(() => {
+            return Promise.all([
+                conn.query(qCreateIssueCommentsTable),
+                conn.query(qCreateIssuesLabelsTable)
+            ])
+        })
+
+        .then((results, fields) => {
+            return Promise.all([
+                conn.query(qAddIssueCommentsWith("298497ad8","comment a")),
+                conn.query(qAddIssueCommentsWith("298497ad8","comment b")),
+                conn.query(qAddIssueCommentsWith("18c3d9274","comment c")),
+                conn.query(qAddIssueCommentsWith("18c3d9274","comment d")),
+                conn.query(qAddIssueCommentsWith("18c3d9274","comment e")),
+                conn.query(qAddIssueCommentsWith("98537ed5a","comment f")),
+                conn.query(qAddIssueLabelsWith("298497ad8","defect")),
+                conn.query(qAddIssueLabelsWith("298497ad8","optimize")),
+                conn.query(qAddIssueLabelsWith("18c3d9274","defect"))
+            ]);
+        })
+
+        .then((results, fields) => {
+            print(results);
+            return conn.end(err => {
+                if(err) throw err;
+                print("Closing...");
+             });
+        })
+        .catch(err => {
+            print(err);
+            return conn.end(err => {
+                if(err) throw err;
+                print("Closing...");
+             });
+        });
+});
+
+
+

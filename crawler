@@ -59,10 +59,12 @@ const byteFormat = function(val) {
 
 /**
  * You need Basic Authentication to use Github's API without timeouts. In order to do so, generate
- * OAth tokens here ( https://github.com/settings/tokens ) and create a YAML file with these contents:
+ * OAth tokens here ( https://github.com/settings/tokens ) and create a YAML file with these exact contents:
  *
+ * ```
  * username: <username>
  * password: <token>
+ * ```
  *
  * More details ( https://developer.github.com/v3/auth/#basic-authentication )
  *
