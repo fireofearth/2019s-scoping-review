@@ -1,8 +1,9 @@
 # 2019S Scoping Review
 
 ## Protocol	
+
 Scoping review on numerical methods / scientific computing software 	
-Goal is to record / observe software development	
+Goal is to record / observe software development
 
 ## Search strategies	
 
@@ -78,11 +79,11 @@ To simplify search I selected only languages commonly used in math for searches:
 | \# contributors   | from API response <https://api.github.com>; response caps contributor lists to 30, ranked by *contributions by contributor* |
 | search strategy   | where this entry is obtained from |
 
-*contributions by contributor*: from API response <https://api.github.com>; contributions include commits to master, opening issues, proposing pull requests, submitting a pull request review, coauthoring commits to master <https://help.github.com/en/articles/viewing-contributions-on-your-profile>	
+**\# contributors**: *contributions by contributor*: from API response <https://api.github.com>; contributions include commits to master, opening issues, proposing pull requests, submitting a pull request review, coauthoring commits to master <https://help.github.com/en/articles/viewing-contributions-on-your-profile>	
 
 ### Crawler for Software Search
 
-Half of software search was automated using the crawler script. The crawler script reads a `in.csv` file as input. Each row contains an `[owner slug]` in first column and `[repo slug]` as the second column. The crawler then access `https://api.github.com/repo/[owner slug]/[repo slug]`
+Half of software search was automated using the `crawler` script. The crawler script reads a `in.csv` file as input. Each row contains an `[owner slug]` in first column and `[repo slug]` as the second column. The crawler then access `https://api.github.com/repo/[owner slug]/[repo slug]`. In order to use the script you need to provide auth tokens to Github API when performing queries. See the code `crawler` for details.
 
 - Some numerical figures were retrieved by HTML crawling the repo. page using Cheerio.
     + Library <https://cheerio.js.org/>
@@ -92,16 +93,61 @@ Half of software search was automated using the crawler script. The crawler scri
     + Github REST API (v3) documentation <https://developer.github.com/v3/>
     + Library <https://github.com/axios/axios>
 
-- Source code 
+- Source code details is obtained using a bash script `cloc-git` that clones every repository in the `in.csv` file, and then runs `cloc` on it.
+    + Library <https://github.com/AlDanial/cloc>
+
+## Issues
+
+To evaluate the relevance of the software repository for our study of numerical bugs I looked for issues relating to numerical converge, iterations, etc. In the worst case scenario I looked at issues of marginal relation such as runtime object state management and floating point errors.
+
+| field                  | description                                             |
+|:-----------------------|:--------------------------------------------------------|
+| title                  | |
+| title                  | |
+| repo                   | |
+| link                   | |
+| Defect4J               | |
+| bug category           | I came up with bug categories by sampling issues |
+| issue name             | |
+| issue site description | |
+| issue my description   | I described or copied any interesting detail regarding how the bug was fixed, etc |
+| patch?                 | yes if JIRA / Github issue contains a downloadable patch |
+| assoc. with commit     | link to associated commit where issue was fixed if any |
+| issue link             | link to issue in JIRA / Github |
+| extra link/notes       | |
+| email link 2           | |
+| email link 3           | |
+| date (created)         | |
+| notes                  | |
+
+**Bug category**:
+
+| field                  | description                                             |
+|:-----------------------|:--------------------------------------------------------|
+| software engineering   | bug not particularly related to numerical algorithm but to memory, type assignment, data types, etc |
+| floating pt arithmetic | bug relating to management of floating point numbers including overflow, floating point precision, etc. Software engineering bugs on floating point data will be categorized as floating point unless data is clearly hardcoded i.e. zero |
+| convergence            | bug relating to solution verification of numerical algorithm such as convergence, error, discretization, iterative steps |
+| state management       | some solvers in OO language use states or observer classes so I am categorizing bugs relating to them here |
+| not a bug              | devs concluded that property of code is improperly flagged as a bug |
+| documentation          | user found an issue with software documentation (including code comments) |
+| unrelated (not used)   | bug not about scientific computing software (i.e. UI, compatibility with operating systems) |
+
+**Issue my description**: additional tags:
+
+| field    | description                                             |
+|:---------|:--------------------------------------------------------|
+| BUG      | description of the bug                                  |
+| BUGFIX   | what devs did to fix the bug                            |
+| COMMENT  | any useful comments/conversations the devs made in the issues tracker |
 
 ### Crawler for Commits and Issues Search
 
 I began writing an automation script to retrieve Github issues and commits details from repositories. The script is unfinished as of now. I might finish this so I have a GraphQL prototype for my other projects.
 
+## Related Work
 
-
-
-
+Anthony Di Franco, Hui Guo, and Cindy Rubio-González. 2017. A comprehensive study of real-world numerical bug characteristics. In Proceedings of the 32nd IEEE/ACM International Conference on Automated Software Engineering (ASE 2017). IEEE Press, Piscataway, NJ, USA, 509-519.
+url: <https://dl.acm.org/citation.cfm?id=3155562.3155627>
 
 
 
